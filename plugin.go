@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"code.gitea.io/sdk/gitea"
 )
@@ -27,16 +28,21 @@ type (
 	}
 
 	Config struct {
-		APIKey     string
-		Files      []string
-		FileExists string
-		Checksum   []string
-		Draft      bool
-		PreRelease bool
-		Insecure   bool
-		BaseURL    string
-		Title      string
-		Note       string
+		APIKey            string
+		Files             []string
+		FileExists        string
+		Checksum          []string
+		Draft             bool
+		PreRelease        bool
+		Insecure          bool
+		BaseURL           string
+		Title             string
+		Note              string
+		NewTag            string
+		TagTimeFormat     string
+		TagDateFormat     string
+		DisplayTimeFormat string
+		DisplayDateFormat string
 	}
 
 	Plugin struct {
@@ -52,8 +58,8 @@ func (p Plugin) Exec() error {
 		files []string
 	)
 
-	if p.Build.Event != "tag" {
-		return fmt.Errorf("The Gitea Release plugin is only available for tags")
+	if p.Build.Event != "tag" && p.Build.Event != "push" && p.Build.Event != "promote" {
+		return fmt.Errorf("The Gitea Release plugin is only available for tag/push/promote events")
 	}
 
 	if p.Config.APIKey == "" {
@@ -124,11 +130,26 @@ func (p Plugin) Exec() error {
 		return err
 	}
 
+	currentTime := time.Now().UTC()
+	releaseTime := currentTime.Format(p.Config.TagTimeFormat)
+	releaseDate := currentTime.Format(p.Config.TagDateFormat)
+	releaseTag := p.Config.NewTag
+	if releaseTag == "" {
+		if p.Build.Event == "tag" {
+			releaseTag = strings.TrimPrefix(p.Commit.Ref, "refs/tags/")
+		} else {
+			// use release timestamp as tag
+			releaseTag = releaseTime
+		}
+	}
+	releaseTag = strings.ReplaceAll(releaseTag, "{releaseTime}", releaseTime)
+	releaseTag = strings.ReplaceAll(releaseTag, "{releaseDate}", releaseDate)
+
 	rc := releaseClient{
 		Client:     client,
 		Owner:      p.Repo.Owner,
 		Repo:       p.Repo.Name,
-		Tag:        strings.TrimPrefix(p.Commit.Ref, "refs/tags/"),
+		Tag:        releaseTag,
 		Draft:      p.Config.Draft,
 		Prerelease: p.Config.PreRelease,
 		FileExists: p.Config.FileExists,
@@ -139,8 +160,16 @@ func (p Plugin) Exec() error {
 	// if the title was not provided via .drone.yml we use the tag instead
 	// fixes https://github.com/drone-plugins/drone-gitea-release/issues/26
 	if rc.Title == "" {
-		rc.Title = rc.Tag
+		if p.Build.Event == "tag" {
+			rc.Title = rc.Tag
+		} else {
+			rc.Title = "Release " + releaseTime
+		}
 	}
+	releaseDisplayTime := currentTime.Format(p.Config.DisplayTimeFormat)
+	releaseDisplayDate := currentTime.Format(p.Config.DisplayDateFormat)
+	rc.Title = strings.ReplaceAll(rc.Title, "{releaseTime}", releaseDisplayTime)
+	rc.Title = strings.ReplaceAll(rc.Title, "{releaseDate}", releaseDisplayDate)
 
 	release, err := rc.buildRelease()
 
