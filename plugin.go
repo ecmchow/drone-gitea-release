@@ -58,8 +58,8 @@ func (p Plugin) Exec() error {
 		files []string
 	)
 
-	if p.Build.Event != "tag" && p.Build.Event != "push" && p.Build.Event != "promote" {
-		return fmt.Errorf("The Gitea Release plugin is only available for tag/push/promote events")
+	if p.Build.Event != "tag" && p.Build.Event != "push" && p.Build.Event != "promote" && p.Build.Event != "deployment" {
+		return fmt.Errorf("The Gitea Release plugin is only available for tag/push/promote/deployment events")
 	}
 
 	if p.Config.APIKey == "" {
